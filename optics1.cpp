@@ -34,18 +34,61 @@ vector<Point>* loadCsv(string filename) {
     ifstream file(filename);
     vector<Point>* data = new vector<Point>;
     string line, cell;
-    // first line
+    
+    // Skip the first line (header)
     getline(file, line);
 
     while (getline(file, line)) {
         stringstream lineStream(line);
         vector<double> row;
+        int columnIndex = 0;
+
+        // Parse the line
         while (getline(lineStream, cell, ',')) {
-            row.push_back(stod(cell));
+            // Skip the first three columns
+            if (columnIndex >= 3) {
+                row.push_back(stod(cell));
+            }
+            columnIndex++;
         }
+
+        // Add the parsed data as a Point
         data->push_back(Point(row));
     }
-    return data;
+    int rows = data->size();
+    if (rows == 0) return data; // Empty dataset
+
+    int cols = (*data)[0].coords.size();
+    // Identify columns to keep
+    double threshold = 0.9 * rows;
+
+    vector<bool> keep_column(cols, true);
+    for (int j = 0; j < cols; ++j) {
+        int zero_count = 0;
+        for (int i = 0; i < rows; ++i) {
+            if ((*data)[i].coords[j] == 0) {
+                zero_count++;
+            }
+        }
+        if (zero_count >= threshold) {
+            keep_column[j] = false; // Mark column for removal
+        }
+    }
+
+    vector<Point>* filterdata = new vector<Point>;
+
+    // Filter out columns with 90% or more zeros
+    for (int i = 0; i < rows; ++i) {
+        vector<double> filtered_row;
+        for (int j = 0; j < cols; ++j) {
+            if (keep_column[j]) {
+                filtered_row.push_back((*data)[i].coords[j]);
+            }
+        }
+        filterdata->push_back(Point(filtered_row));
+    }
+
+    return filterdata;
 }
 struct Optics {
     vector<Point>* m_points;
@@ -178,12 +221,12 @@ struct Optics {
 
 
 int main() {
-    vector<Point>* points = loadCsv("klasterovanje.csv");
+    vector<Point>* points = loadCsv("podaci.ip2/podaci.ip2/all_BS1_1.csv");
     vector<int> processingOrder;
-    Optics* model = new Optics(3.0, 7);
+    Optics* model = new Optics(2.0, 601);
 
 
-    double clusterDistanceThreshold = 2.5;
+    double clusterDistanceThreshold = 0.5;
 
     model->fit(*points);
 
