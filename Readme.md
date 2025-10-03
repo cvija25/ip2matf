@@ -1,7 +1,8 @@
 ### Optics in C++
 
-`g++ optics1.cpp`
+`g++ optics.cpp`
 
-`./a.out`
+`./a.out filename epsilon minPts clusterDistanceThreshold`
+npr. ./a.out klasterovanje.csv 3.0 7 2.5
 
 `python3 plot.py`
