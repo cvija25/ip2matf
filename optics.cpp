@@ -1,208 +1,258 @@
 #include <iostream>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <vector>
 #include <string>
 #include <cmath>
+#include <numeric>
 #include <queue>
 #include <limits>
 #include <algorithm>
-#include <fstream>
+#include <unordered_set>
 
 using namespace std;
 
+// Konstanta za nedefinisanu vrednost (beskonacnost)
 const double UNDEFINED = numeric_limits<double>::max();
 
+// Struktura za predstavljanje tačke u prostoru
 struct Point {
     vector<double> coords;
     bool processed = false;
     double reachabilityDist = UNDEFINED;
-
-    Point(vector<double> c) : coords(c) {}
 };
 
-double euclideanDistance(const Point& p1, const Point& p2) {
-    double dist = 0.0;
-    for (int i = 0; i < p1.coords.size(); ++i) {
-        dist += pow(p1.coords[i] - p2.coords[i], 2);
+// Računanje Pearson distance (1 - Pearson korelacija)
+// Koristi se za merenje udaljenosti između dve tačke na osnovu njihove korelacije
+double pearsonDistance(const Point& p1, const Point& p2) {
+    const auto& x = p1.coords;
+    const auto& y = p2.coords;
+    int n = x.size();
+
+    double meanX = accumulate(x.begin(), x.end(), 0.0) / n;
+    double meanY = accumulate(y.begin(), y.end(), 0.0) / n;
+
+    // Racunanje koeficijenta korelacije
+    double num = 0.0, denX = 0.0, denY = 0.0;
+    for (int i = 0; i < n; ++i) {
+        double dx = x[i] - meanX;
+        double dy = y[i] - meanY;
+        num += dx * dy;      // Brojilac
+        denX += dx * dx;     // Imenilac za X
+        denY += dy * dy;     // Imenilac za Y
     }
-    return sqrt(dist);
+
+    // Pearson korelacija
+    double corr = (denX == 0 || denY == 0) ? 0.0 : num / sqrt(denX * denY);
+    
+    return 1.0 - corr;
 }
 
-vector<Point>* loadCsv(string filename) {
+vector<Point> loadCsv(const string& filename) {
     ifstream file(filename);
-    vector<Point>* data = new vector<Point>;
+    vector<Point> data;
     string line, cell;
-    // first line
+    
+    // Preskacemo header red
     getline(file, line);
 
+    // Citamo red po red
     while (getline(file, line)) {
         stringstream lineStream(line);
         vector<double> row;
+        
+        // Parsiramo svaki element odvojen zarezom
         while (getline(lineStream, cell, ',')) {
             row.push_back(stod(cell));
         }
-        data->push_back(Point(row));
+        data.push_back({row});
     }
     return data;
 }
-struct Optics {
-    vector<Point>* m_points;
-    vector<int>* m_processingOrder;
-    int epsilon, minPts;
 
-    Optics(int e, int mP) : epsilon(e), minPts(mP), m_points(nullptr), m_processingOrder(nullptr) {}
+class Optics {
+    vector<Point>& points;
+    vector<int> processingOrder;
+    double epsilon;
+    int minPts;
 
-    ~Optics() {
-        delete m_points;
-        delete m_processingOrder;
-    }
+public:
+    Optics(vector<Point>& pts, double e, int mP) 
+        : points(pts), epsilon(e), minPts(mP) {}
 
-    vector<int> getNeighbors(int idx) {
-        vector<int> neighbors;
-        vector<Point>& points = *m_points;
-        for (size_t i = 0; i < points.size(); ++i) {
-            if (i != idx && euclideanDistance(points[idx], points[i]) <= epsilon) {
-                neighbors.push_back(i);
+    // Pronalaženje svih suseda tačke koji su u epsilon rastojanju
+    vector<pair<int, double>> getNeighbors(int idx) {
+        vector<pair<int, double>> neighbors;
+        
+        for (int i = 0; i < points.size(); ++i) {
+            if (i != idx) {
+                double dist = pearsonDistance(points[idx], points[i]);
+                
+                if (dist <= epsilon) {
+                    neighbors.push_back({i, dist});
+                }
             }
         }
+        
+        // Sortiramo po rastojanju (najbliži prvo)
+        sort(neighbors.begin(), neighbors.end(), 
+             [](const auto& a, const auto& b) { return a.second < b.second; });
         return neighbors;
     }
 
-    // goes through each unprocessed neighbor and updates it's reachability and puts them in priority queue
-    void updateReachability(priority_queue<pair<double, int>, vector<pair<double, int>>, greater<>> &seeds, const vector<int>& neighbors, int idx) {
-        vector<Point>& points = *m_points;
-        double coreDist = neighbors.size() >= minPts ? euclideanDistance(points[idx], points[neighbors[minPts - 1]]) : UNDEFINED;
-        if (coreDist != UNDEFINED) {
-            for (int neighbor : neighbors) {
-                if (!points[neighbor].processed) {
-                    double newReachDist = max(coreDist, euclideanDistance(points[idx], points[neighbor]));
-                    if (points[neighbor].reachabilityDist == UNDEFINED || newReachDist < points[neighbor].reachabilityDist) {
-                        points[neighbor].reachabilityDist = newReachDist;
+    // Racunanje core distance - rastojanje do minPts-og najbližeg komšije
+    // Ako tačka nema dovoljno suseda, nije "core point"
+    double getCoreDistance(const vector<pair<int, double>>& neighbors) {
+        if (neighbors.size() < minPts) return UNDEFINED;
+    
+        return neighbors[minPts - 1].second;
+    }
+
+    // Azuriranje reachability distance za susede
+    // seeds je priority queue tačaka koje treba obraditi
+    void updateReachability(priority_queue<pair<double, int>, vector<pair<double, int>>, greater<>>& seeds, 
+                           unordered_set<int>& inSeeds,
+                           const vector<pair<int, double>>& neighbors, 
+                           double coreDist) {
+        
+        for (const auto& [neighbor, dist] : neighbors) {
+            if (!points[neighbor].processed) {
+                // Reachability distance je maksimum od core distance i stvarnog rastojanja
+                double newReachDist = max(coreDist, dist);
+                
+                if (newReachDist < points[neighbor].reachabilityDist) {
+                    points[neighbor].reachabilityDist = newReachDist;
+                    
+                    if (inSeeds.find(neighbor) == inSeeds.end()) {
                         seeds.push({newReachDist, neighbor});
+                        inSeeds.insert(neighbor);
                     }
                 }
             }
         }
     }
 
-    void fit(vector<Point>& points) {
-        m_points = &points;
-        m_processingOrder = new vector<int>;
-
-        // goes through each point
+    void fit() {
         for (int i = 0; i < points.size(); ++i) {
-            if (!points[i].processed) {
-                points[i].processed = true;
-                m_processingOrder->push_back(i);
-                vector<int> neighbors = getNeighbors(i);
+            if (points[i].processed) continue;
 
-                // if it's a core point
-                if (neighbors.size() >= minPts) {
-                    priority_queue<pair<double, int>, vector<pair<double, int>>, greater<>> seeds;
-                    updateReachability(seeds, neighbors, i);
+            points[i].processed = true;
+            processingOrder.push_back(i);
+            
+            auto neighbors = getNeighbors(i);
+            double coreDist = getCoreDistance(neighbors);
 
-                    // porcesses all "near" points
-                    while (!seeds.empty()) {
-                        int current = seeds.top().second;
-                        seeds.pop();
-                        if (!points[current].processed) {
-                            points[current].processed = true;
-                            m_processingOrder->push_back(current);
-                            vector<int> currentNeighbors = getNeighbors(current);
-                            if (currentNeighbors.size() >= minPts) {
-                                updateReachability(seeds, currentNeighbors, current);
-                            }
-                        }
+            // Ako je tacka core point (ima dovoljno suseda)
+            if (coreDist != UNDEFINED) {
+                // Kreiramo priority queue za ekspanziju klastera
+                priority_queue<pair<double, int>, vector<pair<double, int>>, greater<>> seeds;
+                unordered_set<int> inSeeds;
+                updateReachability(seeds, inSeeds, neighbors, coreDist);
+
+                // Obradjujemo te tacke
+                while (!seeds.empty()) {
+                    auto [reachDist, current] = seeds.top();
+                    seeds.pop();
+                    inSeeds.erase(current);
+                    
+                    if (points[current].processed) continue;
+
+                    points[current].processed = true;
+                    processingOrder.push_back(current);
+                    
+                    auto currentNeighbors = getNeighbors(current);
+                    double currentCoreDist = getCoreDistance(currentNeighbors);
+                    
+                    // Ako je i ova tačka core point, nastavljamo ekspanziju
+                    if (currentCoreDist != UNDEFINED) {
+                        updateReachability(seeds, inSeeds, currentNeighbors, currentCoreDist);
                     }
                 }
             }
         }
     }
 
-    // we define cluster by setting a threshold
-    vector<vector<int>> extractClusters(double clusterDistanceThreshold) {
+    // Ekstrakcija klastera na osnovu threshold vrednosti
+    // Grupišemo uzastopne tačke čija je reachability distance <= threshold
+    vector<vector<int>> extractClusters(double threshold) {
         vector<vector<int>> clusters;
         vector<int> currentCluster;
-        vector<Point>& points = *m_points;
 
-        for (int idx : *m_processingOrder) {
-            if (points[idx].reachabilityDist < clusterDistanceThreshold) {
+        // Prolazimo kroz tačke u redosledu kako su obrađene
+        for (int idx : processingOrder) {
+            // Ako je reachability distance ispod threshold, dodajemo u trenutni klaster
+            if (points[idx].reachabilityDist <= threshold) {
                 currentCluster.push_back(idx);
-            } else if (!currentCluster.empty()) {
-                clusters.push_back(currentCluster);
-                currentCluster.clear();
+            } else {
+                // Inače, završavamo trenutni klaster i počinjemo novi
+                if (!currentCluster.empty()) {
+                    clusters.push_back(move(currentCluster));
+                    currentCluster.clear();
+                }
             }
         }
 
-        // add the last cluster if it exists
+        // Dodajemo poslednji klaster ako postoji
         if (!currentCluster.empty()) {
-            clusters.push_back(currentCluster);
+            clusters.push_back(move(currentCluster));
         }
 
         return clusters;
     }
 
-    // we export clusers to file so we can plot them in python, TODO in c++
+    // Eksportovanje reachability plot-a u CSV fajl
+    // Ovaj grafik se koristi za vizuelizaciju gustine podataka
+    void exportReachability(const string& filename) {
+        ofstream file(filename);
+        file << "Index,ReachabilityDist\n";
+        
+        // Zapisujemo svaku tačku sa njenom reachability distance
+        for (int idx : processingOrder) {
+            file << idx << "," 
+                 << (points[idx].reachabilityDist == UNDEFINED ? "UNDEFINED" : to_string(points[idx].reachabilityDist)) 
+                 << "\n";
+        }
+    }
+
+    // Eksportovanje rezultata klasterovanja u CSV fajl
+    // Format: element (indeks tačke), cluster (ID klastera)
     void exportClusters(const vector<vector<int>>& clusters, const string& filename) {
         ofstream file(filename);
-        // we do 2 dimensions for siplicity
-        file << "x,y,cluster\n";
-        vector<Point>& points = *m_points;
+        file << "element,cluster\n";
 
+        // Kreiramo mapiranje: indeks elementa -> ID klastera
+        // 0 znači da element nije u nijednom klasteru (šum/noise)
+        vector<int> elementToCluster(points.size(), 0);
+
+        // Popunjavamo mapiranje - klasteri su numerisani od 1
         for (int clusterId = 0; clusterId < clusters.size(); ++clusterId) {
             for (int idx : clusters[clusterId]) {
-                file << points[idx].coords[0] << "," << points[idx].coords[1] << "," << clusterId + 1 << "\n";
+                elementToCluster[idx] = clusterId + 1;
             }
         }
 
-        // Add noise points (not in any cluster)
-        for (size_t i = 0; i < points.size(); ++i) {
-            bool inCluster = false;
-            for (const auto& cluster : clusters) {
-                if (find(cluster.begin(), cluster.end(), i) != cluster.end()) {
-                    inCluster = true;
-                    break;
-                }
-            }
-            if (!inCluster) {
-                file << points[i].coords[0] << "," << points[i].coords[1] << ",0\n"; // Noise is labeled as cluster 0
-            }
+        // Zapisujemo sve elemente sa njihovim klasterima
+        for (int i = 0; i < points.size(); ++i) {
+            file << i << "," << elementToCluster[i] << "\n";
         }
-
-        file.close();
     }
-
 };
 
-
 int main(int argc, char* argv[]) {
-    vector<Point>* points = loadCsv(string(argv[1]));
-    vector<int> processingOrder;
-    Optics* model = new Optics(atof(argv[2]), atoi(argv[3]));
+    // Ucitavanje podataka iz CSV fajla
+    vector<Point> points = loadCsv(string(argv[1]));
+    
+    double epsilon = atof(argv[2]);
+    int minPts = atoi(argv[3]);
+    double clusterThreshold = atof(argv[4]);
 
-
-    double clusterDistanceThreshold = atof(argv[4]);
-
-    model->fit(*points);
-
-    ofstream outFile("reachability_plot.csv");
-    outFile << "Index,ReachabilityDist\n";
-    for (int idx : *model->m_processingOrder) {
-        outFile << idx << ",";
-        if ((*points)[idx].reachabilityDist == UNDEFINED)
-            outFile << "UNDEFINED\n";
-        else
-            outFile << (*points)[idx].reachabilityDist << "\n";
-    }
-    outFile.close();
-
-    vector<vector<int>> clusters = model->extractClusters(clusterDistanceThreshold);
-
-    model->exportClusters(clusters, "clusters.csv");
-
-    delete model;
+    Optics model(points, epsilon, minPts);
+    model.fit();
+    
+    model.exportReachability("reachability_plot.csv");
+    
+    vector<vector<int>> clusters = model.extractClusters(clusterThreshold);
+    model.exportClusters(clusters, "clusters.csv");
 
     return 0;
 }
