@@ -15,37 +15,36 @@ using namespace std;
 // Konstanta za nedefinisanu vrednost (beskonacnost)
 const double UNDEFINED = numeric_limits<double>::max();
 
-// Struktura za predstavljanje tačke u prostoru
 struct Point {
-    vector<double> coords;
+    vector<double> coordinates;
     bool processed = false;
     double reachabilityDist = UNDEFINED;
 };
 
-// Računanje Pearson distance (1 - Pearson korelacija)
-// Koristi se za merenje udaljenosti između dve tačke na osnovu njihove korelacije
+// Racunanje Pearson distance (1 - Pearson korelacija)
+// Koristi se za merenje udaljenosti izmedju dve tacke na osnovu njihove korelacije
 double pearsonDistance(const Point& p1, const Point& p2) {
-    const auto& x = p1.coords;
-    const auto& y = p2.coords;
+    const auto& x = p1.coordinates;
+    const auto& y = p2.coordinates;
     int n = x.size();
 
     double meanX = accumulate(x.begin(), x.end(), 0.0) / n;
     double meanY = accumulate(y.begin(), y.end(), 0.0) / n;
 
     // Racunanje koeficijenta korelacije
-    double num = 0.0, denX = 0.0, denY = 0.0;
+    double nominator = 0.0, denominatorX = 0.0, denominatorY = 0.0;
     for (int i = 0; i < n; ++i) {
         double dx = x[i] - meanX;
         double dy = y[i] - meanY;
-        num += dx * dy;      // Brojilac
-        denX += dx * dx;     // Imenilac za X
-        denY += dy * dy;     // Imenilac za Y
+        nominator += dx * dy;      // Brojilac
+        denominatorX += dx * dx;     // Imenilac za X
+        denominatorY += dy * dy;     // Imenilac za Y
     }
 
     // Pearson korelacija
-    double corr = (denX == 0 || denY == 0) ? 0.0 : num / sqrt(denX * denY);
+    double correlation = (denominatorX == 0 || denominatorY == 0) ? 0.0 : nominator / sqrt(denominatorX * denominatorY);
     
-    return 1.0 - corr;
+    return 1.0 - correlation;
 }
 
 vector<Point> loadCsv(const string& filename) {
@@ -74,11 +73,11 @@ class Optics {
     vector<Point>& points;
     vector<int> processingOrder;
     double epsilon;
-    int minPts;
+    int minNumberOfNeighbors;
 
 public:
     Optics(vector<Point>& pts, double e, int mP) 
-        : points(pts), epsilon(e), minPts(mP) {}
+        : points(pts), epsilon(e), minNumberOfNeighbors(mP) {}
 
     // Pronalaženje svih suseda tačke koji su u epsilon rastojanju
     vector<pair<int, double>> getNeighbors(int idx) {
@@ -86,10 +85,10 @@ public:
         
         for (int i = 0; i < points.size(); ++i) {
             if (i != idx) {
-                double dist = pearsonDistance(points[idx], points[i]);
+                double distance = pearsonDistance(points[idx], points[i]);
                 
-                if (dist <= epsilon) {
-                    neighbors.push_back({i, dist});
+                if (distance <= epsilon) {
+                    neighbors.push_back({i, distance});
                 }
             }
         }
@@ -100,25 +99,26 @@ public:
         return neighbors;
     }
 
-    // Racunanje core distance - rastojanje do minPts-og najbližeg komšije
+    // Racunanje core distance - rastojanje do minNumberOfNeighbors-og najbližeg komšije
     // Ako tačka nema dovoljno suseda, nije "core point"
     double getCoreDistance(const vector<pair<int, double>>& neighbors) {
-        if (neighbors.size() < minPts) return UNDEFINED;
+        if (neighbors.size() < minNumberOfNeighbors) return UNDEFINED;
     
-        return neighbors[minPts - 1].second;
+        return neighbors[minNumberOfNeighbors - 1].second;
     }
 
     // Azuriranje reachability distance za susede
     // seeds je priority queue tačaka koje treba obraditi
+    // inSeeds je set koji ubrzava proveru za tacke koje su vec dodate
     void updateReachability(priority_queue<pair<double, int>, vector<pair<double, int>>, greater<>>& seeds, 
                            unordered_set<int>& inSeeds,
                            const vector<pair<int, double>>& neighbors, 
-                           double coreDist) {
+                           double coreDistance) {
         
-        for (const auto& [neighbor, dist] : neighbors) {
+        for (const auto& [neighbor, distance] : neighbors) {
             if (!points[neighbor].processed) {
                 // Reachability distance je maksimum od core distance i stvarnog rastojanja
-                double newReachDist = max(coreDist, dist);
+                double newReachDist = max(coreDistance, distance);
                 
                 if (newReachDist < points[neighbor].reachabilityDist) {
                     points[neighbor].reachabilityDist = newReachDist;
@@ -140,14 +140,14 @@ public:
             processingOrder.push_back(i);
             
             auto neighbors = getNeighbors(i);
-            double coreDist = getCoreDistance(neighbors);
+            double coreDistance = getCoreDistance(neighbors);
 
             // Ako je tacka core point (ima dovoljno suseda)
-            if (coreDist != UNDEFINED) {
+            if (coreDistance != UNDEFINED) {
                 // Kreiramo priority queue za ekspanziju klastera
                 priority_queue<pair<double, int>, vector<pair<double, int>>, greater<>> seeds;
                 unordered_set<int> inSeeds;
-                updateReachability(seeds, inSeeds, neighbors, coreDist);
+                updateReachability(seeds, inSeeds, neighbors, coreDistance);
 
                 // Obradjujemo te tacke
                 while (!seeds.empty()) {
@@ -243,10 +243,10 @@ int main(int argc, char* argv[]) {
     vector<Point> points = loadCsv(string(argv[1]));
     
     double epsilon = atof(argv[2]);
-    int minPts = atoi(argv[3]);
+    int minNumberOfNeighbors = atoi(argv[3]);
     double clusterThreshold = atof(argv[4]);
 
-    Optics model(points, epsilon, minPts);
+    Optics model(points, epsilon, minNumberOfNeighbors);
     model.fit();
     
     model.exportReachability("reachability_plot.csv");

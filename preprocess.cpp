@@ -109,92 +109,133 @@ Matrix select_top_variance(const Matrix &data, int topN) {
 }
 
 
-// PCA function
-vector<vector<double>> PCA(const vector<vector<double>>& data, int k) {
+vector<double> computeMean(const vector<vector<double>>& data) {
     int n = data.size();
     int m = data[0].size();
-
-    // racunamo proseke atributa
     vector<double> mean(m, 0.0);
-    for(int j=0;j<m;j++)
-        for(int i=0;i<n;i++)
+    for (int j = 0; j < m; j++)
+        for (int i = 0; i < n; i++)
             mean[j] += data[i][j];
-    for(int j=0;j<m;j++)
+    for (int j = 0; j < m; j++)
         mean[j] /= n;
+    return mean;
+}
 
-    // centriramo ih
+vector<vector<double>> centerData(const vector<vector<double>>& data, const vector<double>& mean) {
+    int n = data.size();
+    int m = data[0].size();
     vector<vector<double>> X = data;
-    for(int i=0;i<n;i++)
-        for(int j=0;j<m;j++)
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < m; j++)
             X[i][j] -= mean[j];
+    return X;
+}
 
-    // matrica kovariansi
-    vector<vector<double>> cov(m, vector<double>(m,0.0));
-    for(int i=0;i<m;i++)
-        for(int j=0;j<=i;j++){
-            double sum = 0;
-            for(int r=0;r<n;r++) sum += X[r][i]*X[r][j];
-            cov[i][j] = cov[j][i] = sum/(n-1);
+vector<vector<double>> computeCovariance(const vector<vector<double>>& X) {
+    int n = X.size();
+    int m = X[0].size();
+    vector<vector<double>> cov(m, vector<double>(m, 0.0));
+    for (int i = 0; i < m; i++)
+        for (int j = 0; j <= i; j++) {
+            double sum = 0.0;
+            for (int r = 0; r < n; r++)
+                sum += X[r][i] * X[r][j];
+            cov[i][j] = cov[j][i] = sum / (n - 1);
         }
+    return cov;
+}
 
-    // jakovijeva metoda sa sopstvenim vrednostima
-    vector<double> eigenvalues(m,0.0);
-    vector<vector<double>> eigenvectors(m, vector<double>(m,0.0));
-    for(int i=0;i<m;i++) eigenvectors[i][i]=1.0;
+pair<int, int> maxOffDiagonal(const vector<vector<double>>& A) {
+    int m = A.size();
+    int p = 0, q = 1;
+    double maxVal = fabs(A[p][q]);
+    for (int i = 0; i < m; i++)
+        for (int j = i + 1; j < m; j++)
+            if (fabs(A[i][j]) > maxVal) { maxVal = fabs(A[i][j]); p = i; q = j; }
+    return {p, q};
+}
 
-    int maxIter = 100;
-    for(int iter=0;iter<maxIter;iter++){
-        int p=0,q=1; double maxVal=fabs(cov[p][q]);
-        for(int i=0;i<m;i++)
-            for(int j=i+1;j<m;j++)
-                if(fabs(cov[i][j])>maxVal) { maxVal=fabs(cov[i][j]); p=i;q=j; }
-        // nadjemo najveci vandijagonalni element
-        if(maxVal<1e-10) break;
+void jacobiRotate(vector<vector<double>>& A, vector<vector<double>>& V, int p, int q) {
+    int m = A.size();
+    if (A[p][q] == 0.0) return;
 
-        // nadjemo ugao rotacije
-        double theta = 0.5*atan2(2*cov[p][q], cov[q][q]-cov[p][p]);
-        double c=cos(theta), s=sin(theta);
+    double theta = 0.5 * atan2(2 * A[p][q], A[q][q] - A[p][p]);
+    double c = cos(theta), s = sin(theta);
 
-        // primenimo rotaciju
-        double app = c*c*cov[p][p] - 2*s*c*cov[p][q] + s*s*cov[q][q];
-        double aqq = s*s*cov[p][p] + 2*s*c*cov[p][q] + c*c*cov[q][q];
-        cov[p][p]=app; cov[q][q]=aqq; cov[p][q]=cov[q][p]=0.0;
+    double app = c * c * A[p][p] - 2 * s * c * A[p][q] + s * s * A[q][q];
+    double aqq = s * s * A[p][p] + 2 * s * c * A[p][q] + c * c * A[q][q];
+    A[p][p] = app;
+    A[q][q] = aqq;
+    A[p][q] = A[q][p] = 0.0;
 
-
-        // azuriramo povezane elemente
-        for(int r=0;r<m;r++){
-            if(r!=p && r!=q){
-                double arp = c*cov[r][p]-s*cov[r][q];
-                double arq = s*cov[r][p]+c*cov[r][q];
-                cov[r][p]=cov[p][r]=arp;
-                cov[r][q]=cov[q][r]=arq;
-            }
-        }
-
-        // svrstavamo u matricu
-        for(int r=0;r<m;r++){
-            double vrp = c*eigenvectors[r][p]-s*eigenvectors[r][q];
-            double vrq = s*eigenvectors[r][p]+c*eigenvectors[r][q];
-            eigenvectors[r][p]=vrp;
-            eigenvectors[r][q]=vrq;
+    for (int r = 0; r < m; r++) {
+        if (r != p && r != q) {
+            double arp = c * A[r][p] - s * A[r][q];
+            double arq = s * A[r][p] + c * A[r][q];
+            A[r][p] = A[p][r] = arp;
+            A[r][q] = A[q][r] = arq;
         }
     }
 
-    for(int i=0;i<m;i++) eigenvalues[i] = cov[i][i];
+    for (int r = 0; r < m; r++) {
+        double vrp = c * V[r][p] - s * V[r][q];
+        double vrq = s * V[r][p] + c * V[r][q];
+        V[r][p] = vrp;
+        V[r][q] = vrq;
+    }
+}
 
-    // sortiramo sopstvene vektore
-    vector<int> indices(m);
-    for(int i=0;i<m;i++) indices[i]=i;
-    sort(indices.begin(), indices.end(), [&](int a,int b){return eigenvalues[a]>eigenvalues[b];});
+pair<vector<double>, vector<vector<double>>> jacobiEigenDecomposition(vector<vector<double>> A) {
+    int m = A.size();
+    vector<vector<double>> V(m, vector<double>(m, 0.0));
+    for (int i = 0; i < m; i++) V[i][i] = 1.0;
 
-    // pronadjemo k najboljih
-    vector<vector<double>> reduced(n, vector<double>(k,0.0));
-    for(int i=0;i<n;i++)
-        for(int j=0;j<k;j++)
-            for(int f=0;f<m;f++)
-                reduced[i][j] += X[i][f]*eigenvectors[f][indices[j]];
+    int maxIter = 100;
+    for (int iter = 0; iter < maxIter; iter++) {
+        pair<int, int> pq = maxOffDiagonal(A);
+        int p = pq.first, q = pq.second;
+        if (fabs(A[p][q]) < 1e-10) break;
+        jacobiRotate(A, V, p, q);
+    }
 
+    vector<double> eigenvalues(m);
+    for (int i = 0; i < m; i++) eigenvalues[i] = A[i][i];
+    return make_pair(eigenvalues, V);
+}
+
+vector<vector<double>> projectData(
+    const vector<vector<double>>& X,
+    const vector<vector<double>>& eigenvectors,
+    const vector<int>& indices,
+    int k
+) {
+    int n = X.size();
+    int m = X[0].size();
+    vector<vector<double>> reduced(n, vector<double>(k, 0.0));
+
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < k; j++)
+            for (int f = 0; f < m; f++)
+                reduced[i][j] += X[i][f] * eigenvectors[f][indices[j]];
     return reduced;
+}
+
+vector<vector<double>> PCA(const vector<vector<double>>& data, int k) {
+    auto mean = computeMean(data);
+    auto X = centerData(data, mean);
+    auto cov = computeCovariance(X);
+
+    auto result = jacobiEigenDecomposition(cov);
+    auto eigenvalues = result.first;
+    auto eigenvectors = result.second;
+
+    vector<int> indices(eigenvalues.size());
+    iota(indices.begin(), indices.end(), 0);
+    sort(indices.begin(), indices.end(), [&](int a, int b) {
+        return eigenvalues[a] > eigenvalues[b];
+    });
+
+    return projectData(X, eigenvectors, indices, k);
 }
 
 void saveCSV(const Matrix &data, const string &filename) {
@@ -210,9 +251,9 @@ void saveCSV(const Matrix &data, const string &filename) {
     file.close();
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     // ucitavamo skup podataka
-    Matrix data = loadCSV("all_BS2_1.csv");
+    Matrix data = loadCSV(argv[1]);
 
     // transponujemo kako bismo lakse filtrili atribute
     Matrix dataT = transpose(data);
