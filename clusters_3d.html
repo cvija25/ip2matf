@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Vizualizacija klastera</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+        }
+        #info { 
+            position: absolute; 
+            top: 10px; 
+            left: 10px; 
+            color: white; 
+            background: rgba(0,0,0,0.7); 
+            padding: 15px; 
+            border-radius: 8px;
+            max-width: 250px;
+        }
+        #info h2 { margin: 0 0 10px 0; font-size: 20px; }
+        #info p { margin: 5px 0; font-size: 14px; }
+        .legend-item { 
+            display: flex; 
+            align-items: center; 
+            margin: 5px 0; 
+        }
+        .legend-color { 
+            width: 15px; 
+            height: 15px; 
+            border-radius: 50%; 
+            margin-right: 8px;
+            border: 2px solid white;
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>3D Vizualizacija klastera</h2>
+        <p>Ukupno: 32 tačaka</p>
+        <hr style="border-color: #444; margin: 10px 0;">
+        <div style="font-size: 13px; font-weight: bold; margin-bottom: 5px;">Klasteri:</div>
+        <div class='legend-item'>
+            <div class='legend-color' style='background-color: #FF6B6B;'></div>
+            <span>Klaster 0 (8)</span>
+        </div>
+        <div class='legend-item'>
+            <div class='legend-color' style='background-color: #4ECDC4;'></div>
+            <span>Klaster 1 (8)</span>
+        </div>
+        <div class='legend-item'>
+            <div class='legend-color' style='background-color: #45B7D1;'></div>
+            <span>Klaster 2 (8)</span>
+        </div>
+        <div class='legend-item'>
+            <div class='legend-color' style='background-color: #FFA07A;'></div>
+            <span>Klaster 3 (8)</span>
+        </div>
+        <hr style="border-color: #444; margin: 10px 0;">
+        <p style="font-size: 12px; color: #aaa;">
+            <strong>Kontrole:</strong><br>
+            🖱️ Prevuci mišem - rotacija<br>
+            🔍 Scroll - zum
+        </p>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 15, 15);
+        camera.lookAt(5, 5, 5);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        // Osvetljenje
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0xffffff, 0.8);
+        pointLight.position.set(15, 15, 15);
+        scene.add(pointLight);
+        
+        // Ose
+        const axesHelper = new THREE.AxesHelper(12);
+        scene.add(axesHelper);
+        
+        // Grid
+        const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+        scene.add(gridHelper);
+        
+        // Dodaj labele za ose
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = 64;
+        canvas.height = 64;
+        
+        function createTextTexture(text, color) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 64;
+            canvas.height = 64;
+            context.fillStyle = color;
+            context.font = 'Bold 32px Arial';
+            context.textAlign = 'center';
+            context.fillText(text, 32, 40);
+            return new THREE.CanvasTexture(canvas);
+        }
+        
+        // X osa (crvena)
+        const xTexture = createTextTexture('X', '#ff0000');
+        const xSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: xTexture }));
+        xSprite.position.set(13, 0, 0);
+        xSprite.scale.set(1.5, 1.5, 1);
+        scene.add(xSprite);
+        
+        // Y osa (zelena)
+        const yTexture = createTextTexture('Y', '#00ff00');
+        const ySprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: yTexture }));
+        ySprite.position.set(0, 13, 0);
+        ySprite.scale.set(1.5, 1.5, 1);
+        scene.add(ySprite);
+        
+        // Z osa (plava)
+        const zTexture = createTextTexture('Z', '#0000ff');
+        const zSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: zTexture }));
+        zSprite.position.set(0, 0, 13);
+        zSprite.scale.set(1.5, 1.5, 1);
+        scene.add(zSprite);
+
+        // Tačke podataka
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FF6B6B',
+                emissive: '#FF6B6B',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2, 2, 2);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FF6B6B',
+                emissive: '#FF6B6B',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2.3, 2.2, 1.8);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FF6B6B',
+                emissive: '#FF6B6B',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(1.8, 1.9, 2.2);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FF6B6B',
+                emissive: '#FF6B6B',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2.1, 2.3, 2.1);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FF6B6B',
+                emissive: '#FF6B6B',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(1.9, 2.1, 1.9);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FF6B6B',
+                emissive: '#FF6B6B',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2.2, 1.8, 2.3);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FF6B6B',
+                emissive: '#FF6B6B',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2.4, 2, 1.7);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FF6B6B',
+                emissive: '#FF6B6B',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(1.7, 2.2, 2.4);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#4ECDC4',
+                emissive: '#4ECDC4',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8, 8, 8);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#4ECDC4',
+                emissive: '#4ECDC4',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8.3, 8.2, 7.8);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#4ECDC4',
+                emissive: '#4ECDC4',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(7.8, 7.9, 8.2);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#4ECDC4',
+                emissive: '#4ECDC4',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8.1, 8.3, 8.1);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#4ECDC4',
+                emissive: '#4ECDC4',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(7.9, 8.1, 7.9);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#4ECDC4',
+                emissive: '#4ECDC4',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8.2, 7.8, 8.3);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#4ECDC4',
+                emissive: '#4ECDC4',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8.4, 8, 7.7);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#4ECDC4',
+                emissive: '#4ECDC4',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(7.7, 8.2, 8.4);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#45B7D1',
+                emissive: '#45B7D1',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8, 8, 2);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#45B7D1',
+                emissive: '#45B7D1',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8.3, 8.2, 1.8);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#45B7D1',
+                emissive: '#45B7D1',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(7.8, 7.9, 2.2);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#45B7D1',
+                emissive: '#45B7D1',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8.1, 8.3, 2.1);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#45B7D1',
+                emissive: '#45B7D1',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(7.9, 8.1, 1.9);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#45B7D1',
+                emissive: '#45B7D1',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8.2, 7.8, 2.3);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#45B7D1',
+                emissive: '#45B7D1',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(8.4, 8, 1.7);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#45B7D1',
+                emissive: '#45B7D1',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(7.7, 8.2, 2.4);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FFA07A',
+                emissive: '#FFA07A',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2, 2, 8);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FFA07A',
+                emissive: '#FFA07A',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2.3, 2.2, 7.8);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FFA07A',
+                emissive: '#FFA07A',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(1.8, 1.9, 8.2);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FFA07A',
+                emissive: '#FFA07A',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2.1, 2.3, 8.1);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FFA07A',
+                emissive: '#FFA07A',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(1.9, 2.1, 7.9);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FFA07A',
+                emissive: '#FFA07A',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2.2, 1.8, 8.3);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FFA07A',
+                emissive: '#FFA07A',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(2.4, 2, 7.7);
+            scene.add(sphere);
+        }
+        {
+            const geom = new THREE.SphereGeometry(0.2, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: '#FFA07A',
+                emissive: '#FFA07A',
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(geom, mat);
+            sphere.position.set(1.7, 2.2, 8.4);
+            scene.add(sphere);
+        }
+
+        // Kontrole misa
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+        
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                scene.rotation.y += deltaX * 0.005;
+                scene.rotation.x += deltaY * 0.005;
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        // Zoom sa scroll-om
+        renderer.domElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.1;
+            const delta = e.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
+            camera.position.multiplyScalar(delta);
+        });
+        
+        // Animacija
+        function animate() {
+            requestAnimationFrame(animate);
+            // Lagana automatska rotacija kad ne vuces
+            if (!isDragging) {
+                scene.rotation.y += 0.001;
+            }
+            renderer.render(scene, camera);
+        }
+        
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>
