@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <fstream>
+#include <sstream>
 #include <algorithm>
 
 using namespace std;
@@ -60,6 +61,59 @@ vector<Point3D> loadDummyData3D()
 
     return data;
 }
+
+// Funkcija za učitavanje klastera (preskače header, uzima samo 2. kolonu)
+vector<int> loadClusters(const string &filename)
+{
+    vector<int> clusters;
+    ifstream file(filename);
+    string line;
+
+    // Preskoči header
+    getline(file, line);
+
+    while (getline(file, line))
+    {
+        stringstream ss(line);
+        string index, clusterStr;
+        getline(ss, index, ',');      // preskoči prvi stupac (element)
+        getline(ss, clusterStr, ','); // drugi stupac = cluster
+        clusters.push_back(stoi(clusterStr));
+    }
+    return clusters;
+}
+
+// Funkcija za učitavanje PCA podataka (50 kolona po redu, bez headera)
+vector<vector<double>> loadPCA(const string &filename)
+{
+    vector<vector<double>> data;
+    ifstream file(filename);
+    string line;
+    while (getline(file, line))
+    {
+        vector<double> row;
+        stringstream ss(line);
+        string cell;
+        while (getline(ss, cell, ','))
+        {
+            row.push_back(stod(cell));
+        }
+        data.push_back(row);
+    }
+    return data;
+}
+
+vector<Point3D> combineData(const std::vector<std::vector<double>> &pca, const std::vector<int> &clusters)
+{
+    vector<Point3D> points;
+    for (size_t i = 0; i < pca.size(); i++)
+    {
+        points.push_back(Point3D(pca[i][0], pca[i][1], pca[i][2], clusters[i]));
+    }
+    return points;
+}
+
+#include <cmath>
 
 void saveToHTML(const vector<Point3D> &data, const string &filename)
 {
@@ -286,34 +340,54 @@ void saveToHTML(const vector<Point3D> &data, const string &filename)
     cout << "HTML sacuvan: " << filename << endl;
 }
 
+void scaleX(vector<Point3D> &points, double factor = 0.5)
+{
+    if (points.empty())
+        return;
+
+    // Nađi min i max po x
+    double minX = points[0].x, maxX = points[0].x;
+    for (const auto &p : points)
+    {
+        if (p.x < minX)
+            minX = p.x;
+        if (p.x > maxX)
+            maxX = p.x;
+    }
+
+    double midX = (minX + maxX) / 2.0;
+    double halfRange = (maxX - minX) / 2.0 * factor;
+
+    // Skaliraj x oko sredine
+    for (auto &p : points)
+    {
+        p.x = midX + (p.x - midX) * factor;
+    }
+}
+
 int main()
 {
     cout << "=== 3D Vizualizacija klastera ===" << endl;
 
-    // Ucitaj dummy podatke
-    vector<Point3D> data = loadDummyData3D();
+    vector<vector<double>> pcaData = loadPCA("reduced_genes.csv");
+    vector<int> clusterData = loadClusters("clusters.csv");
+
+    cout << pcaData.size() << " PCA tacaka ucitano." << endl;
+    cout << clusterData.size() << " klaster ID-jeva ucitano." << endl;
+
+    /*if (pcaData.size() != clusterData.size())
+    {
+        cerr << "Greska: broj PCA tacaka i klaster ID-jeva se ne poklapa!" << endl;
+        return 1;
+    }*/
+
+    vector<Point3D> data = combineData(pcaData, clusterData);
+    scaleX(data);
+
     cout << "Ucitano " << data.size() << " 3D tacaka" << endl;
 
-    // Prebroj po klasterima
-    vector<int> clusterCounts(10, 0);
-    for (const auto &p : data)
-    {
-        clusterCounts[p.cluster]++;
-    }
+    saveToHTML(data, "clusters_3d_n.html");
 
-    cout << "\nRaspodela po klasterima:" << endl;
-    for (int i = 0; i < 10; i++)
-    {
-        if (clusterCounts[i] > 0)
-        {
-            cout << "  Klaster " << i << ": " << clusterCounts[i] << " tacaka" << endl;
-        }
-    }
-
-    // Sacuvaj vizualizaciju
-    saveToHTML(data, "clusters_3d.html");
-
-    cout << "\nGotovo! Otvori 'clusters_3d.html' u browseru." << endl;
-
+    cout << "Gotovo! Otvori 'clusters_3d.html' u browseru." << endl;
     return 0;
 }
