@@ -103,12 +103,42 @@ vector<vector<double>> loadPCA(const string &filename)
     return data;
 }
 
+#include <cmath>
+
 vector<Point3D> combineData(const std::vector<std::vector<double>> &pca, const std::vector<int> &clusters)
 {
     vector<Point3D> points;
+    if (pca.empty())
+        return points;
+
+    // Izračunaj srednje vrednosti za prve 3 komponente
+    double meanX = 0, meanY = 0, meanZ = 0;
     for (size_t i = 0; i < pca.size(); i++)
     {
-        points.push_back(Point3D(pca[i][0], pca[i][1], pca[i][2], clusters[i]));
+        meanX += pca[i][0];
+        meanY += pca[i][1];
+        meanZ += pca[i][2];
+    }
+    meanX /= pca.size();
+    meanY /= pca.size();
+    meanZ /= pca.size();
+
+    // Izračunaj standardnu devijaciju za X (za blago skaliranje)
+    double stdX = 0;
+    for (size_t i = 0; i < pca.size(); i++)
+    {
+        stdX += (pca[i][0] - meanX) * (pca[i][0] - meanX);
+    }
+    stdX = sqrt(stdX / pca.size());
+
+    double scaleX = 0.5; // smanji “rastegnutost” X ose na pola, blago
+
+    for (size_t i = 0; i < pca.size(); i++)
+    {
+        double x = (pca[i][0] - meanX) * scaleX; // centriraj i blago skaliraj X
+        double y = pca[i][1] - meanY;            // centriraj Y
+        double z = pca[i][2] - meanZ;            // centriraj Z
+        points.push_back(Point3D(x, y, z, clusters[i]));
     }
     return points;
 }
@@ -340,31 +370,6 @@ void saveToHTML(const vector<Point3D> &data, const string &filename)
     cout << "HTML sacuvan: " << filename << endl;
 }
 
-void scaleX(vector<Point3D> &points, double factor = 0.5)
-{
-    if (points.empty())
-        return;
-
-    // Nađi min i max po x
-    double minX = points[0].x, maxX = points[0].x;
-    for (const auto &p : points)
-    {
-        if (p.x < minX)
-            minX = p.x;
-        if (p.x > maxX)
-            maxX = p.x;
-    }
-
-    double midX = (minX + maxX) / 2.0;
-    double halfRange = (maxX - minX) / 2.0 * factor;
-
-    // Skaliraj x oko sredine
-    for (auto &p : points)
-    {
-        p.x = midX + (p.x - midX) * factor;
-    }
-}
-
 int main()
 {
     cout << "=== 3D Vizualizacija klastera ===" << endl;
@@ -382,7 +387,6 @@ int main()
     }*/
 
     vector<Point3D> data = combineData(pcaData, clusterData);
-    scaleX(data);
 
     cout << "Ucitano " << data.size() << " 3D tacaka" << endl;
 
