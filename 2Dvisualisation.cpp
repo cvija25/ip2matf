@@ -196,7 +196,7 @@ void saveSVG(const vector<Point>& data, const vector<pair<int, int>>& clusters, 
 
 int main() {
     vector<vector<double>> attributes = loadAttributes("reduced_genes.csv");
-    vector<pair<int, int>> clusters = loadClusters("clustering_results.csv");
+    vector<pair<int, int>> clusters = loadClusters("clusters.csv");
     vector<Point> data = combineData(attributes, clusters);
 
     if (data.empty()) {

@@ -253,7 +253,7 @@ int main(int argc, char* argv[]) {
     }
     
     clara.cluster();
-    clara.saveResultsToCSV("clustering_results.csv");
+    clara.saveResultsToCSV("clusters.csv");
     
     return 0;
 }

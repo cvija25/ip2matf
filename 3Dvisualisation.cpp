@@ -246,7 +246,7 @@ void saveHTML(const vector<Point3D>& data, const string& filename) {
 
 int main() {
     vector<vector<double>> attributes = loadAttributes("reduced_genes.csv");
-    vector<pair<int, int>> clusters = loadClusters("clustering_results.csv");
+    vector<pair<int, int>> clusters = loadClusters("clusters.csv");
     vector<Point3D> data = combineData(attributes, clusters);
     
     if (data.empty()) {
